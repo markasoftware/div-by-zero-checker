@@ -142,7 +142,8 @@ public class DivByZeroTransfer extends CFTransfer {
             if (equal(lhs, zero())) return zero();
             return top();
 
-        case MOD:
+        case MOD: // while the same body as DIVIDE, they're logically different and a refined
+                  // lattice might require different implementations, so I write MOD separately.
             // true mathematical modulo, as performed in such superlative languages as Common Lisp, always returns a positive number. It's really remainder in Java, which is different.
             if (equal(lhs, zero())) return zero();
             return top(); // even if both positive, could be equal, so mod = 0
