@@ -140,8 +140,6 @@ public class DivByZeroTransfer extends CFTransfer {
 
         case DIVIDE:
             if (equal(lhs, zero())) return zero();
-            if (equal(rhs, positive())) return lhs;
-            if (equal(rhs, negative())) return negate(lhs);
             return top();
 
         case MOD:
