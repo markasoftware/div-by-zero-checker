@@ -71,8 +71,31 @@ public class DivByZeroTransfer extends CFTransfer {
             Comparison operator,
             AnnotationMirror lhs,
             AnnotationMirror rhs) {
-        // TODO
-        return lhs;
+        return glb(lhs, refineLhsOfComparisonHelper(operator, lhs, rhs));
+    }
+
+    private AnnotationMirror refineLhsOfComparisonHelper(
+            Comparison operator,
+            AnnotationMirror lhs,
+            AnnotationMirror rhs) {
+        if (rhs == bottom()) return bottom();
+
+        switch (operator) {
+        case GT:
+            return equal(rhs, positive()) || equal(rhs, zero()) ? positive() : top();
+        case GE:
+            return equal(rhs, positive()) ? positive() : top();
+        case LT:
+            return equal(rhs, negative()) || equal(rhs, zero()) ? negative() : top();
+        case LE:
+            return equal(rhs, negative()) ? negative() : top();
+        case EQ:
+            return rhs;
+        case NE:
+            return equal(rhs, zero()) ? nonzero() : top();
+        }
+
+        return lhs; // shoudn't happen
     }
 
     /**
@@ -89,10 +112,43 @@ public class DivByZeroTransfer extends CFTransfer {
      * @param rhs        the lattice point for the right-hand side of the expression
      * @return the lattice point for the result of the expression
      */
+    @SuppressWarnings("fallthrough")
     private AnnotationMirror arithmeticTransfer(
             BinaryOperator operator,
             AnnotationMirror lhs,
             AnnotationMirror rhs) {
+        if (equal(lhs, bottom()) || equal(rhs, bottom())) return bottom();
+
+        switch (operator) {
+        case MINUS:
+            rhs = negate(rhs);
+            // FALLTHROUGH
+        case PLUS:
+            if (equal(lhs, zero())) return rhs;
+            if (equal(rhs, zero())) return lhs;
+            if (isSigned(lhs) && equal(lhs, rhs)) return lhs;
+            return top();
+
+        case TIMES:
+            // can't fallthorugh to divide like we did before, because integer division is not the
+            // inverse of integer multiplication due to flooring of quotients.
+            if (equal(lhs, zero()) || equal(rhs, zero())) return zero();
+            if (isSigned(lhs) && equal(lhs, rhs)) return positive();
+            if (isSigned(lhs) && equal(lhs, negate(rhs))) return negative();
+            if (isNonzero(lhs) && isNonzero(rhs)) return nonzero();
+            return top();
+
+        case DIVIDE:
+            if (equal(lhs, zero())) return zero();
+            if (equal(rhs, positive())) return lhs;
+            if (equal(rhs, negative())) return negate(lhs);
+            return top();
+
+        case MOD:
+            // true mathematical modulo, as performed in such superlative languages as Common Lisp, always returns a positive number. It's really remainder in Java, which is different.
+            if (equal(lhs, zero())) return zero();
+            return top(); // even if both positive, could be equal, so mod = 0
+        }
         // TODO
         return top();
     }
@@ -108,6 +164,31 @@ public class DivByZeroTransfer extends CFTransfer {
     /** Get the bottom of the lattice */
     private AnnotationMirror bottom() {
         return analysis.getTypeFactory().getQualifierHierarchy().getBottomAnnotations().iterator().next();
+    }
+
+    private AnnotationMirror zero() {
+        return reflect(Zero.class);
+    }
+
+    private AnnotationMirror positive() {
+        return reflect(Positive.class);
+    }
+
+    private AnnotationMirror negative() {
+        return reflect(Negative.class);
+    }
+
+    private AnnotationMirror nonzero() {
+        return reflect(Nonzero.class);
+    }
+
+    private boolean isSigned(AnnotationMirror m) {
+        return equal(m, positive()) || equal(m, negative());
+    }
+
+    private boolean isNonzero(AnnotationMirror m) {
+        // there's probably an easier way to check subtype...
+        return equal(lub(m, nonzero()), nonzero());
     }
 
     /** Compute the least-upper-bound of two points in the lattice */
@@ -156,6 +237,17 @@ public class DivByZeroTransfer extends CFTransfer {
             case GE: return Comparison.LT;
             default: throw new IllegalArgumentException(op.toString());
         }
+    }
+
+    private AnnotationMirror negate(AnnotationMirror ann) {
+        if (equal(ann, positive())) {
+            return negative();
+        }
+        if (equal(ann, negative())) {
+            return positive();
+        }
+        // top, zero, bottom, all stay the same
+        return ann;
     }
 
     // ========================================================================
